@@ -2,8 +2,9 @@ import os
 import re
 import requests
 
-TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+# .strip() removes any accidental spaces or hidden newlines from GitHub secrets
+TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
 WHATSAPP_NUMBERS = ["+919619809009", "+919818555165"]
 
 def send_whatsapp(title, description, alert_type):
