@@ -1,27 +1,40 @@
-name: BSE Tracker
+name: Run BSE Tracker
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
+  # schedule:
+  #   - cron: '*/5 * * * *' # Uncomment if you want it to trigger automatically on a schedule
 
 jobs:
-  track:
+  track-bse:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      # THIS STEP IS CRITICAL: Restores state.json from the previous run
+      - name: Restore tracker state cache
+        uses: actions/cache@v4
         with:
-          python-version: '3.11'
+          path: state.json
+          key: ${{ runner.os }}-bse-tracker-state-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-bse-tracker-state-
 
-      - name: Install Dependencies
-        run: pip install -r requirements.txt
+      - name: Set up Python
+        uses: setup-python@v5 # or actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-      - name: Run Tracker
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Run Tracker Script
         env:
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-        run: python tracker.py
+        run: |
+          python tracker.py

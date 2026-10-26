@@ -1,88 +1,148 @@
 import os
 import re
+import json
+import base64
 import requests
 
-# Load and strip credentials
-TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
-TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
-WHATSAPP_NUMBERS = ["+919619809009"]
-SEEN_FILE = "seen_titles.txt"
+# --- CONFIGURATION ---
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
 
-def load_seen():
-    if os.path.exists(SEEN_FILE):
-        with open(SEEN_FILE, "r", encoding="utf-8") as f:
-            return set(line.strip() for line in f if line.strip())
-    return set()
+MY_WHATSAPP_NUMBERS = ["+919619809009"]
 
-def save_seen(title):
-    with open(SEEN_FILE, "a", encoding="utf-8") as f:
-        f.write(title + "\n")
+# Direct BSE XML announcements feed
+FEEDS = [
+    'https://www.bseindia.com/data/xml/announcements.aspx'
+]
 
-def send_whatsapp(title, description, alert_type):
-    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
+STATE_FILE = "state.json"
+
+def load_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"seen": {}}
+    return {"seen": {}}
+
+def save_state(state_data):
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(state_data, f)
+
+def send_twilio_template_message(exchange, alert_type, title, description, target_number):
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
     
-    # Truncate text to fit clean variable boundaries
-    body_text = f"{title} -> {description}"[:400]
+    variable1 = f"{exchange} {alert_type}"
+    variable2 = f"{title} -> {description}"[:500]
     
-    for num in WHATSAPP_NUMBERS:
-        payload = {
-            "From": "whatsapp:+14155238886",
-            "To": f"whatsapp:{num}",
-            "ContentSid": "HXb5b62575e6e4ff6129ad7c8efe1f983e",
-            "ContentVariables": f'{{"1": "BSE {alert_type}", "2": "{body_text}"}}'
-        }
-        res = requests.post(url, data=payload, auth=(TWILIO_SID, TWILIO_TOKEN), timeout=10)
-        print(f"Twilio response for {num}: Status {res.status_code} - Body: {res.text}")
-
-def main():
-    seen_titles = load_seen()
-    url = "https://www.bseindia.com/data/xml/announcements.aspx"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    payload = {
+        "From": "whatsapp:+14155238886",
+        "To": f"whatsapp:{target_number}",
+        "ContentSid": "HXb5b62575e6e4ff6129ad7c8efe1f983e",
+        "ContentVariables": json.dumps({"1": variable1, "2": variable2})
     }
     
-    print("Fetching BSE XML feed...")
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        print(f"BSE Response Status: {response.status_code}")
-        
-        if response.status_code != 200:
-            return
+    # Basic Auth encoding matching Utilities.base64Encode in Apps Script
+    credentials = f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}"
+    encoded_creds = base64.b64encode(credentials.encode("ascii")).decode("ascii")
+    
+    headers = {
+        "Authorization": f"Basic {encoded_creds}"
+    }
+    
+    response = requests.post(url, data=payload, headers=headers, timeout=10)
+    print(f"Twilio response for {target_number}: Status {response.status_code} - Body: {response.text}")
 
-        raw_text = response.text
-        items = raw_text.split('<item>')
-        print(f"Successfully parsed {len(items)-1} total items from feed.")
-        
-        for item_raw in items[1:]:
-            title_match = re.search(r'<title>([\s\S]*?)</title>', item_raw)
-            desc_match = re.search(r'<description>([\s\S]*?)</description>', item_raw)
-            
-            title = title_match.group(1).replace('<![CDATA[', '').replace(']]>', '').strip() if title_match else ''
-            desc = desc_match.group(1).replace('<![CDATA[', '').replace(']]>', '').strip() if desc_match else ''
-            
-            if not title or title in seen_titles:
+def track_all_exchange_buybacks_and_takeovers():
+    state = load_state()
+    seen_cache = state.get("seen", {})
+    
+    alerts_sent = 0
+
+    for feed_url in FEEDS:
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Referer": "https://www.bseindia.com/"
+            }
+            response = requests.get(feed_url, headers=headers, timeout=15)
+            status_code = response.status_code
+
+            if status_code != 200:
+                print(f"Failed to fetch BSE feed directly: Status {status_code}")
                 continue
-                
-            full_text = f"{title} {desc}".lower()
-            
-            # Match Buybacks
-            if any(kw in full_text for kw in ["buyback", "buy-back", "buy back", "bought back"]):
-                print(f"Match found: BUYBACK -> {title}")
-                send_whatsapp(title, desc, "BUYBACK")
-                save_seen(title)
-                seen_titles.add(title)
 
-            # Match Takeovers / Open Offers / SAST
-            elif any(kw in full_text for kw in ["open offer", "sast", "manager to the offer", "letter of offer", "takeover", "acquisition of shares"]):
-                print(f"Match found: TAKEOVER -> {title}")
-                send_whatsapp(title, desc, "OPEN OFFER / TAKEOVER")
-                save_seen(title)
-                seen_titles.add(title)
+            raw_text = response.text
+            if not raw_text:
+                continue
+
+            items = raw_text.split('<item>')
+            if len(items) <= 1:
+                continue
+
+            max_items = min(len(items) - 1, 25)
+
+            for i in range(1, max_items + 1):
+                if alerts_sent >= 8:
+                    break
+
+                item_raw = items[i]
                 
-    except Exception as e:
-        print(f"Error occurred: {str(e)}")
-        raise e
+                title_match = re.search(r'<title>([\s\S]*?)</title>', item_raw)
+                desc_match = re.search(r'<description>([\s\S]*?)</description>', item_raw)
+                
+                title = title_match.group(1).replace('<![CDATA[', '').replace(']]>', '').strip() if title_match else ''
+                description = desc_match.group(1).replace('<![CDATA[', '').replace(']]>', '').strip() if desc_match else ''
+                
+                if not title:
+                    continue
+
+                # Clean up entity encodings
+                title = title.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+                description = description.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+
+                # Fingerprint generation (exact match to Apps Script logic)
+                text_to_hash = re.sub(r'\s+', '', title + description).lower()
+                cache_key = base64.b64encode(text_to_hash.encode('utf-8')).decode('utf-8')[:45]
+                
+                if cache_key in seen_cache:
+                    continue
+
+                exchange = 'BSE'
+                match_found = False
+                alert_type = 'MONITOR'
+
+                # 1. Corporate Buyback Routing
+                if re.search(r'buyback|buy-back|buy back', title, re.IGNORECASE) or re.search(r'buyback|buy-back|buy back', description, re.IGNORECASE):
+                    match_found = True
+                    alert_type = 'BUYBACK'
+                # 2. Targeted Takeover & SEBI SAST Open Offer Routing
+                elif re.search(r'open offer|sast|public announcement|detailed public statement|letter of offer|manager to the offer', title, re.IGNORECASE) or \
+                     re.search(r'open offer|sast|public announcement|detailed public statement|letter of offer|manager to the offer', description, re.IGNORECASE):
+                    match_found = True
+                    alert_type = 'OPEN OFFER / TAKEOVER'
+
+                if match_found:
+                    seen_cache[cache_key] = True
+
+                    for number in MY_WHATSAPP_NUMBERS:
+                        try:
+                            send_twilio_template_message(exchange, alert_type, title, description, number)
+                        except Exception as err:
+                            print(f"Twilio Dispatch Failure for {number}: {str(err)}")
+                    alerts_sent += 1
+                else:
+                    seen_cache[cache_key] = True
+
+        except Exception as e:
+            print('Processing Engine Failure Handler: ' + str(e))
+
+    # Save updated state back
+    state["seen"] = seen_cache
+    save_state(state)
 
 if __name__ == "__main__":
-    main()
+    track_all_exchange_buybacks_and_takeovers()
