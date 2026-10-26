@@ -2,8 +2,8 @@ name: Run BSE Tracker
 
 on:
   workflow_dispatch:
-   schedule:
-     - cron: '*/5 * * * *' # Uncomment if you want it to trigger automatically on a schedule
+  schedule:
+    - cron: '*/5 * * * *'
 
 jobs:
   track-bse:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # THIS STEP IS CRITICAL: Restores state.json from the previous run
+      # Restores state.json from previous runs to maintain fingerprint memory
       - name: Restore tracker state cache
         uses: actions/cache@v4
         with:
@@ -23,7 +23,7 @@ jobs:
             ${{ runner.os }}-bse-tracker-state-
 
       - name: Set up Python
-        uses: setup-python@v5 # or actions/setup-python@v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
