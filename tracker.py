@@ -2,10 +2,9 @@ import os
 import re
 import requests
 
-# Load credentials
+# Load and strip credentials
 TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
-WHATSAPP_NUMBERS = ["+919619809009", "+919818555165"]
 WHATSAPP_NUMBERS = ["+919619809009"]
 SEEN_FILE = "seen_titles.txt"
 
@@ -21,13 +20,16 @@ def save_seen(title):
 
 def send_whatsapp(title, description, alert_type):
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
-    message_body = f"📢 BSE {alert_type}\n\n*{title}*\n\n{description}"[:1500]
+    
+    # Truncate text to fit clean variable boundaries
+    body_text = f"{title} -> {description}"[:400]
     
     for num in WHATSAPP_NUMBERS:
         payload = {
             "From": "whatsapp:+14155238886",
             "To": f"whatsapp:{num}",
-            "Body": message_body
+            "ContentSid": "HXb5b62575e6e4ff6129ad7c8efe1f983e",
+            "ContentVariables": f'{{"1": "BSE {alert_type}", "2": "{body_text}"}}'
         }
         res = requests.post(url, data=payload, auth=(TWILIO_SID, TWILIO_TOKEN), timeout=10)
         print(f"Twilio response for {num}: Status {res.status_code} - Body: {res.text}")
