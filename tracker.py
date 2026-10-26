@@ -1,6 +1,5 @@
 import os
 import re
-import json
 import requests
 
 # Load and strip credentials
@@ -11,29 +10,23 @@ WHATSAPP_NUMBERS = ["+919619809009", "+919818555165"]
 def send_whatsapp(title, description, alert_type):
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
     
-    variable1 = f"BSE {alert_type}"
-    variable2 = f"{title} -> {description}"[:500]
-    
-    # Safely serialize dictionary to JSON string to prevent syntax/escaping errors (Error 21656)
-    content_variables = json.dumps({
-        "1": variable1,
-        "2": variable2
-    })
+    # Format a clean, readable text message body using standard Body parameter
+    message_body = f"📢 BSE {alert_type}\n\n*{title}*\n\n{description}"[:1500]
     
     for num in WHATSAPP_NUMBERS:
         payload = {
             "From": "whatsapp:+14155238886",
             "To": f"whatsapp:{num}",
-            "ContentSid": "HXb5b62575e6e4ff6129ad7c8efe1f983e",
-            "ContentVariables": content_variables
+            "Body": message_body
         }
         res = requests.post(url, data=payload, auth=(TWILIO_SID, TWILIO_TOKEN), timeout=10)
         print(f"Twilio response for {num}: Status {res.status_code} - Body: {res.text}")
 
 def main():
-
-    # Add this temporary line right inside main() to test notification delivery:
-    send_whatsapp("Test Stock Ltd", "Testing Python to Twilio integration.", "BUYBACK")
+    # --- TEST NOTIFICATION DELIVERY ---
+    print("Sending test notification...")
+    send_whatsapp("Test Stock Ltd (500000)", "Testing Python to Twilio WhatsApp integration.", "BUYBACK")
+    # -----------------------------------
 
     url = "https://www.bseindia.com/data/xml/announcements.aspx"
     headers = {
