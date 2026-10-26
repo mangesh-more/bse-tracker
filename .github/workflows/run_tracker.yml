@@ -2,8 +2,8 @@ name: Run BSE Tracker
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: '*/5 * * * *' # Uncomment if you want it to trigger automatically on a schedule
+   schedule:
+     - cron: '*/5 * * * *' # Uncomment if you want it to trigger automatically on a schedule
 
 jobs:
   track-bse:
