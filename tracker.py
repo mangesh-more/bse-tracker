@@ -21,6 +21,9 @@ def send_whatsapp(title, description, alert_type):
         print(f"Twilio response for {num}: Status {res.status_code}")
 
 def main():
+    # Add this temporary line right inside main() to test notification delivery:
+    send_whatsapp("Test Stock Ltd", "Testing Python to Twilio integration.", "BUYBACK")
+
     url = "https://www.bseindia.com/data/xml/announcements.aspx"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
