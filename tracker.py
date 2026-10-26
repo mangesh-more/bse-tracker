@@ -2,15 +2,25 @@ import os
 import re
 import requests
 
-# Load and strip credentials
+# Load credentials
 TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
 WHATSAPP_NUMBERS = ["+919619809009", "+919818555165"]
+WHATSAPP_NUMBERS = ["+919619809009"]
+SEEN_FILE = "seen_titles.txt"
+
+def load_seen():
+    if os.path.exists(SEEN_FILE):
+        with open(SEEN_FILE, "r", encoding="utf-8") as f:
+            return set(line.strip() for line in f if line.strip())
+    return set()
+
+def save_seen(title):
+    with open(SEEN_FILE, "a", encoding="utf-8") as f:
+        f.write(title + "\n")
 
 def send_whatsapp(title, description, alert_type):
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
-    
-    # Format a clean, readable text message body using standard Body parameter
     message_body = f"📢 BSE {alert_type}\n\n*{title}*\n\n{description}"[:1500]
     
     for num in WHATSAPP_NUMBERS:
@@ -23,6 +33,7 @@ def send_whatsapp(title, description, alert_type):
         print(f"Twilio response for {num}: Status {res.status_code} - Body: {res.text}")
 
 def main():
+    seen_titles = load_seen()
     url = "https://www.bseindia.com/data/xml/announcements.aspx"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -41,7 +52,6 @@ def main():
         items = raw_text.split('<item>')
         print(f"Successfully parsed {len(items)-1} total items from feed.")
         
-        # Process all available items in the RSS XML feed
         for item_raw in items[1:]:
             title_match = re.search(r'<title>([\s\S]*?)</title>', item_raw)
             desc_match = re.search(r'<description>([\s\S]*?)</description>', item_raw)
@@ -49,7 +59,7 @@ def main():
             title = title_match.group(1).replace('<![CDATA[', '').replace(']]>', '').strip() if title_match else ''
             desc = desc_match.group(1).replace('<![CDATA[', '').replace(']]>', '').strip() if desc_match else ''
             
-            if not title:
+            if not title or title in seen_titles:
                 continue
                 
             full_text = f"{title} {desc}".lower()
@@ -58,10 +68,15 @@ def main():
             if any(kw in full_text for kw in ["buyback", "buy-back", "buy back", "bought back"]):
                 print(f"Match found: BUYBACK -> {title}")
                 send_whatsapp(title, desc, "BUYBACK")
+                save_seen(title)
+                seen_titles.add(title)
+
             # Match Takeovers / Open Offers / SAST
             elif any(kw in full_text for kw in ["open offer", "sast", "manager to the offer", "letter of offer", "takeover", "acquisition of shares"]):
                 print(f"Match found: TAKEOVER -> {title}")
                 send_whatsapp(title, desc, "OPEN OFFER / TAKEOVER")
+                save_seen(title)
+                seen_titles.add(title)
                 
     except Exception as e:
         print(f"Error occurred: {str(e)}")
