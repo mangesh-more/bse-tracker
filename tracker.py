@@ -23,11 +23,6 @@ def send_whatsapp(title, description, alert_type):
         print(f"Twilio response for {num}: Status {res.status_code} - Body: {res.text}")
 
 def main():
-    # --- TEST NOTIFICATION DELIVERY ---
-    print("Sending test notification...")
-    send_whatsapp("Test Stock Ltd (500000)", "Testing Python to Twilio WhatsApp integration.", "BUYBACK")
-    # -----------------------------------
-
     url = "https://www.bseindia.com/data/xml/announcements.aspx"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -46,7 +41,8 @@ def main():
         items = raw_text.split('<item>')
         print(f"Successfully parsed {len(items)-1} total items from feed.")
         
-        for item_raw in items[1:25]:
+        # Process all available items in the RSS XML feed
+        for item_raw in items[1:]:
             title_match = re.search(r'<title>([\s\S]*?)</title>', item_raw)
             desc_match = re.search(r'<description>([\s\S]*?)</description>', item_raw)
             
@@ -59,11 +55,11 @@ def main():
             full_text = f"{title} {desc}".lower()
             
             # Match Buybacks
-            if any(kw in full_text for kw in ["buyback", "buy-back", "buy back"]):
+            if any(kw in full_text for kw in ["buyback", "buy-back", "buy back", "bought back"]):
                 print(f"Match found: BUYBACK -> {title}")
                 send_whatsapp(title, desc, "BUYBACK")
-            # Match Takeovers / Open Offers
-            elif any(kw in full_text for kw in ["open offer", "sast", "manager to the offer", "letter of offer"]):
+            # Match Takeovers / Open Offers / SAST
+            elif any(kw in full_text for kw in ["open offer", "sast", "manager to the offer", "letter of offer", "takeover", "acquisition of shares"]):
                 print(f"Match found: TAKEOVER -> {title}")
                 send_whatsapp(title, desc, "OPEN OFFER / TAKEOVER")
                 
