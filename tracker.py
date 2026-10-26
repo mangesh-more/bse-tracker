@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import requests
 
 # Load and strip credentials
@@ -7,24 +8,24 @@ TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
 TWILIO_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
 WHATSAPP_NUMBERS = ["+919619809009", "+919818555165"]
 
-# --- DEBUG CHECK ---
-print(f"DEBUG: SID Length = {len(TWILIO_SID)}")
-print(f"DEBUG: SID Starts With = {TWILIO_SID[:4] if TWILIO_SID else 'EMPTY!'}")
-print(f"DEBUG: Token Length = {len(TWILIO_TOKEN)}")
-# ------------------
-
 def send_whatsapp(title, description, alert_type):
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
-    print(f"Target Twilio URL: {url}")
     
-    body_text = f"BSE {alert_type}\n\n{title} -> {description}"[:500]
+    variable1 = f"BSE {alert_type}"
+    variable2 = f"{title} -> {description}"[:500]
+    
+    # Safely serialize dictionary to JSON string to prevent syntax/escaping errors (Error 21656)
+    content_variables = json.dumps({
+        "1": variable1,
+        "2": variable2
+    })
     
     for num in WHATSAPP_NUMBERS:
         payload = {
             "From": "whatsapp:+14155238886",
             "To": f"whatsapp:{num}",
             "ContentSid": "HXb5b62575e6e4ff6129ad7c8efe1f983e",
-            "ContentVariables": f'{{"1": "BSE {alert_type}", "2": "{body_text}"}}'
+            "ContentVariables": content_variables
         }
         res = requests.post(url, data=payload, auth=(TWILIO_SID, TWILIO_TOKEN), timeout=10)
         print(f"Twilio response for {num}: Status {res.status_code} - Body: {res.text}")
@@ -48,8 +49,26 @@ def main():
         items = raw_text.split('<item>')
         print(f"Successfully parsed {len(items)-1} total items from feed.")
         
-        # Test notification trigger for demonstration
-        send_whatsapp("Test Stock Ltd", "Testing Python to Twilio integration.", "BUYBACK")
+        for item_raw in items[1:25]:
+            title_match = re.search(r'<title>([\s\S]*?)</title>', item_raw)
+            desc_match = re.search(r'<description>([\s\S]*?)</description>', item_raw)
+            
+            title = title_match.group(1).replace('<![CDATA[', '').replace(']]>', '').strip() if title_match else ''
+            desc = desc_match.group(1).replace('<![CDATA[', '').replace(']]>', '').strip() if desc_match else ''
+            
+            if not title:
+                continue
+                
+            full_text = f"{title} {desc}".lower()
+            
+            # Match Buybacks
+            if any(kw in full_text for kw in ["buyback", "buy-back", "buy back"]):
+                print(f"Match found: BUYBACK -> {title}")
+                send_whatsapp(title, desc, "BUYBACK")
+            # Match Takeovers / Open Offers
+            elif any(kw in full_text for kw in ["open offer", "sast", "manager to the offer", "letter of offer"]):
+                print(f"Match found: TAKEOVER -> {title}")
+                send_whatsapp(title, desc, "OPEN OFFER / TAKEOVER")
                 
     except Exception as e:
         print(f"Error occurred: {str(e)}")
