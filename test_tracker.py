@@ -16,14 +16,14 @@ def send_telegram_message(alert_type, title, description):
     }
     
     response = requests.post(url, json=payload, timeout=10)
-    print(f"Telegram response: Status {response.status_code} - Body: {response.text}")
+    print(f"Telegram response: Status {response.status_code}")
 
 def test_fetch_and_alert():
     print("Sending direct test ping to Telegram...")
     send_telegram_message(
         "SYSTEM PING", 
         "BSE Tracker Manual Test", 
-        "If you see this message, your Telegram Bot token and Chat ID are working perfectly on GitHub!"
+        "Scan window expanded to 200 items. Bot is active!"
     )
 
     url = 'https://www.bseindia.com/data/xml/announcements.aspx'
@@ -33,7 +33,7 @@ def test_fetch_and_alert():
         "Referer": "https://www.bseindia.com/"
     }
     
-    print("\nFetching live BSE XML feed (ignoring cache)...")
+    print("\nFetching live BSE XML feed...")
     response = requests.get(url, headers=headers, timeout=15)
     
     if response.status_code != 200:
@@ -41,10 +41,13 @@ def test_fetch_and_alert():
         return
 
     items = response.text.split('<item>')
-    print(f"Successfully parsed {len(items)-1} total items from feed.")
+    total_items = len(items) - 1
+    print(f"Successfully parsed {total_items} total items from feed.")
 
     matches_found = 0
-    max_items = min(len(items) - 1, 25)
+    # FIX: Increased scan limit from 25 to 200 to capture recent announcements deeper in the feed
+    max_items = min(total_items, 200)
+    print(f"Scanning the latest {max_items} announcements for Buybacks and Open Offers...")
 
     for i in range(1, max_items + 1):
         item_raw = items[i]
@@ -74,11 +77,11 @@ def test_fetch_and_alert():
             alert_type = 'OPEN OFFER / TAKEOVER'
 
         if match_found:
-            print(f"-> MATCH FOUND: [{alert_type}] {title}")
+            print(f"-> MATCH FOUND [{i}/{max_items}]: [{alert_type}] {title}")
             send_telegram_message(alert_type, title, description)
             matches_found += 1
 
-    print(f"\nScan complete. Sent {matches_found} matching alerts to Telegram.")
+    print(f"\nScan complete. Scanned {max_items} items, sent {matches_found} matching alerts.")
 
 if __name__ == "__main__":
     test_fetch_and_alert()
