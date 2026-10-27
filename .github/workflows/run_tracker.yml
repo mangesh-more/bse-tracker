@@ -1,9 +1,9 @@
 name: Run BSE Tracker
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Allows triggers from your PowerShell script API call
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/15 * * * *' # Allows automatic background runs every 15 minutes
 
 jobs:
   track-bse:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Restores state.json from previous runs to maintain fingerprint memory
+      # Restores state.json from previous runs to maintain announcement memory across triggers
       - name: Restore tracker state cache
         uses: actions/cache@v4
         with:
@@ -34,7 +34,7 @@ jobs:
 
       - name: Run Tracker Script
         env:
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python tracker.py

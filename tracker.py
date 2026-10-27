@@ -5,10 +5,8 @@ import base64
 import requests
 
 # --- CONFIGURATION ---
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "").strip()
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "").strip()
-
-MY_WHATSAPP_NUMBERS = ["+919619809009"]
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 
 # Direct BSE XML announcements feed
 FEEDS = [
@@ -30,29 +28,20 @@ def save_state(state_data):
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state_data, f)
 
-def send_twilio_template_message(exchange, alert_type, title, description, target_number):
-    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
+def send_telegram_message(alert_type, title, description):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
-    variable1 = f"{exchange} {alert_type}"
-    variable2 = f"{title} -> {description}"[:500]
+    # Format message nicely for Telegram Markdown
+    message_text = f"🚨 *BSE {alert_type}*\n\n*{title}*\n\n{description}"[:1000]
     
     payload = {
-        "From": "whatsapp:+14155238886",
-        "To": f"whatsapp:{target_number}",
-        "ContentSid": "HXb5b62575e6e4ff6129ad7c8efe1f983e",
-        "ContentVariables": json.dumps({"1": variable1, "2": variable2})
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message_text,
+        "parse_mode": "Markdown"
     }
     
-    # Basic Auth encoding matching Utilities.base64Encode in Apps Script
-    credentials = f"{TWILIO_ACCOUNT_SID}:{TWILIO_AUTH_TOKEN}"
-    encoded_creds = base64.b64encode(credentials.encode("ascii")).decode("ascii")
-    
-    headers = {
-        "Authorization": f"Basic {encoded_creds}"
-    }
-    
-    response = requests.post(url, data=payload, headers=headers, timeout=10)
-    print(f"Twilio response for {target_number}: Status {response.status_code} - Body: {response.text}")
+    response = requests.post(url, json=payload, timeout=10)
+    print(f"Telegram response: Status {response.status_code} - Body: {response.text}")
 
 def track_all_exchange_buybacks_and_takeovers():
     state = load_state()
@@ -104,14 +93,13 @@ def track_all_exchange_buybacks_and_takeovers():
                 title = title.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
                 description = description.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
 
-                # Fingerprint generation (exact match to Apps Script logic)
+                # Fingerprint generation
                 text_to_hash = re.sub(r'\s+', '', title + description).lower()
                 cache_key = base64.b64encode(text_to_hash.encode('utf-8')).decode('utf-8')[:45]
                 
                 if cache_key in seen_cache:
                     continue
 
-                exchange = 'BSE'
                 match_found = False
                 alert_type = 'MONITOR'
 
@@ -127,12 +115,10 @@ def track_all_exchange_buybacks_and_takeovers():
 
                 if match_found:
                     seen_cache[cache_key] = True
-
-                    for number in MY_WHATSAPP_NUMBERS:
-                        try:
-                            send_twilio_template_message(exchange, alert_type, title, description, number)
-                        except Exception as err:
-                            print(f"Twilio Dispatch Failure for {number}: {str(err)}")
+                    try:
+                        send_telegram_message(alert_type, title, description)
+                    except Exception as err:
+                        print(f"Telegram Dispatch Failure: {str(err)}")
                     alerts_sent += 1
                 else:
                     seen_cache[cache_key] = True
