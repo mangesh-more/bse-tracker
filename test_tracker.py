@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import requests
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
@@ -23,7 +24,7 @@ def test_fetch_and_alert():
     send_telegram_message(
         "SYSTEM PING", 
         "BSE Tracker Manual Test", 
-        "Scan window expanded to 200 items. Bot is active!"
+        "Extended timeout & retry logic applied."
     )
 
     url = 'https://www.bseindia.com/data/xml/announcements.aspx'
@@ -33,11 +34,24 @@ def test_fetch_and_alert():
         "Referer": "https://www.bseindia.com/"
     }
     
-    print("\nFetching live BSE XML feed...")
-    response = requests.get(url, headers=headers, timeout=15)
+    print("\nFetching live BSE XML feed (with retry)...")
     
-    if response.status_code != 200:
-        print(f"Failed to fetch BSE feed: Status {response.status_code}")
+    # Retry loop with extended 35-second timeout
+    response = None
+    for attempt in range(1, 4):
+        try:
+            print(f"Attempt {attempt}/3 fetching BSE feed...")
+            response = requests.get(url, headers=headers, timeout=35)
+            if response.status_code == 200:
+                print("Successfully fetched BSE XML feed!")
+                break
+        except Exception as err:
+            print(f"Attempt {attempt} failed: {err}")
+            if attempt < 3:
+                time.sleep(3)
+
+    if not response or response.status_code != 200:
+        print("Failed to fetch BSE feed after 3 attempts.")
         return
 
     items = response.text.split('<item>')
@@ -45,9 +59,8 @@ def test_fetch_and_alert():
     print(f"Successfully parsed {total_items} total items from feed.")
 
     matches_found = 0
-    # FIX: Increased scan limit from 25 to 200 to capture recent announcements deeper in the feed
     max_items = min(total_items, 200)
-    print(f"Scanning the latest {max_items} announcements for Buybacks and Open Offers...")
+    print(f"Scanning the latest {max_items} announcements for Buybacks and Open Offers...\n")
 
     for i in range(1, max_items + 1):
         item_raw = items[i]
@@ -60,6 +73,10 @@ def test_fetch_and_alert():
         
         if not title:
             continue
+
+        # Print top 5 sample titles to stdout for diagnostic confirmation
+        if i <= 5:
+            print(f"  [Sample {i}] {title[:80]}...")
 
         title = title.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
         description = description.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
